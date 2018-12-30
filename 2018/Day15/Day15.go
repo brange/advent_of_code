@@ -314,7 +314,7 @@ func step1(input string) {
 	}
 }
 
-func step2(input string, elfAttackPower int) bool {
+func step2(input string, elfAttackPower int) (int, int) {
 	log.Println(fmt.Sprintf("Running step two with attack power %d", elfAttackPower))
 	world, warriors := generateMap(input)
 	//printMap(world, warriors)
@@ -346,26 +346,59 @@ func step2(input string, elfAttackPower int) bool {
 
 			if numberElfs == numberOfElves {
 				log.Println("Step 2 answer: " + strconv.Itoa(answer))
-				return true
 			}
-			break
+			return numberElfs, numberOfElves
 		}
 		cnt++
 	}
-	return false
+	return -1, -1
 }
 
 func main() {
 	input := aoc_utils.FetchInput(2018, 15)
 	step1(input)
 
-	elfAttackPower := 4
-	for true {
-		elfIsWinningTeam := step2(input, elfAttackPower)
-		if !elfIsWinningTeam {
-			elfAttackPower++
-		} else {
-			break
+	brute := false
+	if brute {
+		elfAttackPower := 4
+		for true {
+			elfIsWinningTeam, totalNumberOfElvesFromTheStart := step2(input, elfAttackPower)
+			if elfIsWinningTeam < totalNumberOfElvesFromTheStart {
+				elfAttackPower++
+			} else {
+				break
+			}
+		}
+	} else {
+		lowerLimit := 4
+		upperLimit := 200
+		elfAttackPower := upperLimit
+		lowestAP := 200
+		for true {
+			elfIsWinningTeam, totalNumberOfElvesFromTheStart := step2(input, elfAttackPower)
+			if elfIsWinningTeam == totalNumberOfElvesFromTheStart {
+				if elfAttackPower < lowestAP {
+					lowestAP = elfAttackPower
+				}
+				if upperLimit-lowerLimit == 1 {
+					break
+				} else {
+					upperLimit = elfAttackPower
+					elfAttackPower -= (upperLimit - lowerLimit) / 2
+				}
+			} else {
+				if elfAttackPower == lowestAP-1 {
+					log.Println("Lowest AP that doesn't kill any elfes: " + strconv.Itoa(lowestAP))
+					break
+				}
+				lowerLimit = elfAttackPower
+				if upperLimit-lowerLimit <= 0 {
+					elfAttackPower *= 2
+				} else {
+					elfAttackPower += (upperLimit - lowerLimit) / 2
+				}
+			}
+
 		}
 	}
 }
