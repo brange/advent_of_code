@@ -354,12 +354,8 @@ func step2(input string, elfAttackPower int) (int, int) {
 	return -1, -1
 }
 
-func main() {
-	input := aoc_utils.FetchInput(2018, 15)
-	step1(input)
-
-	brute := false
-	if brute {
+func step2Main(input string, binarySearch bool) {
+	if !binarySearch {
 		elfAttackPower := 4
 		for true {
 			elfIsWinningTeam, totalNumberOfElvesFromTheStart := step2(input, elfAttackPower)
@@ -401,4 +397,11 @@ func main() {
 
 		}
 	}
+}
+
+func main() {
+	input := aoc_utils.FetchInput(2018, 15)
+	step1(input)
+
+	step2Main(input, true)
 }
