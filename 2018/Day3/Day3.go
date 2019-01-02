@@ -40,7 +40,7 @@ func rectToString(rect rect) string {
 	return fmt.Sprintf("#%d @ %d,%d: %dx%d", rect.id, rect.x, rect.y, rect.width, rect.height)
 }
 
-func step1(rects []rect) (string, string) {
+func checkRectangles(rects []rect) (string, string) {
 	xMax := 0
 	yMax := 0
 	for _, rect := range rects {
@@ -99,7 +99,7 @@ func main() {
 	input := utils.FetchInput(2018, 3)
 	rects := parseInput(input)
 
-	answerStepOne, answerStepTwo := step1(rects)
+	answerStepOne, answerStepTwo := checkRectangles(rects)
 	fmt.Println("Answer step1: " + answerStepOne)
 	fmt.Println("Answer step2: " + answerStepTwo)
 
