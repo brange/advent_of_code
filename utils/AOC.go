@@ -80,6 +80,12 @@ func FetchInput(year, day int) string {
 	check(err)
 	data, err := ioutil.ReadAll(resp.Body)
 	check(err)
+	if resp.StatusCode != 200 {
+		log.Println("Got response: ", data)
+		log.Println("Invalid response code ", resp.StatusCode)
+
+		panic("Error fetching input, got code " + strconv.Itoa(resp.StatusCode))
+	}
 
 	saveToFile(string(data))
 	return strings.Trim(strings.Trim(string(data), "\n"), "\r")
