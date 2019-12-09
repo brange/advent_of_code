@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"log"
+	"math"
 	"strconv"
 	_ "strconv"
 	"strings"
@@ -32,138 +33,138 @@ func runProgram(arr []string, inChannel <-chan int64, output chan<- int64, halt 
 
 	var relativeBase int64
 
-	expandIfNeeded := func(pos int64) []int64 {
-		if int(pos) >= len(ints) {
-			// Find a better way to increase the slices
-			//log.Println("Will expand from", len(ints), "to", pos+1)
-			for k := len(ints); k <= (int(pos) + 1); k++ {
-				ints = append(ints, 0)
-			}
-		}
-		return ints
-	}
-
-	getPosition := func(arr []int64, index, mode int64) int64 {
-		// 'Parameters that an instruction writes to will never be in immediate mode.'
-		if int(mode) == ParameterMode {
-			return arr[index]
-		} else if int(mode) == RelativeMode {
-			return relativeBase + arr[index]
-		} else {
-			log.Fatal("Invalid mode for getPosition:", mode)
-			return -1
-		}
-	}
-
-	getParameter := func(arr []int64, index, mode int64) int64 {
-		if int(mode) == ParameterMode {
-			arr = expandIfNeeded(arr[index])
-			return arr[arr[index]]
-		} else if int(mode) == ImmediateMode {
-			return arr[index]
-		} else if int(mode) == RelativeMode {
-			relativeIndex := relativeBase + arr[index]
-			return arr[relativeIndex]
-		}
-		log.Fatalln("Invalid mode", mode)
-		return int64(-1)
-	}
-
-	//log.Println("phaseSetting:", phaseSetting, "userInput:", userInput, "startIndex:", startIndex, "len(ints)", len(*ints))
 	for index := 0; index < len(ints); {
 
-		input := (ints)[index]
+		input := ints[index]
 
-		var optcode int64
-		var mode1, mode2, mode3 int64
-		if input >= 1 && input <= 8 {
-			optcode = input
-		} else if input == 99 {
-			if debug {
-				log.Println("Breaking, got input 99")
+		getMode := func(paramIndex int) int {
+			pow := func(a, b int) int {
+				return int(math.Pow(float64(a), float64(b)))
 			}
-
-			halt <- true
-			break
-		} else {
-			optcode = input % 100
-			mode1 = ((input - optcode) % 1000) / 100
-			mode2 = ((input - mode1 - optcode) % 10000) / 1000
-			mode3 = ((input - mode2 - mode1 - optcode) % 100000) / 10000
+			return int(input) % pow(10, paramIndex+2) / pow(10, paramIndex+1)
 		}
 
-		//log.Println("Executing", input, "at", index)
+		getParameter := func(paramIndex int) int64 {
+			_index := index + paramIndex
+			mode := getMode(paramIndex)
+
+			if int(mode) == ParameterMode {
+				pos := ints[_index]
+				return ints[pos]
+			} else if int(mode) == ImmediateMode {
+				return ints[_index]
+			} else if int(mode) == RelativeMode {
+				relativeIndex := relativeBase + ints[_index]
+				return ints[relativeIndex]
+			}
+			log.Fatalln("Invalid mode", mode)
+			return int64(-1)
+		}
+
+		getPosition := func(paramIndex int) int64 {
+			// 'Parameters that an instruction writes to will never be in immediate mode.'
+			mode := getMode(paramIndex)
+			_index := index + paramIndex
+			var position int64
+			if int(mode) == ParameterMode {
+				position = ints[_index]
+			} else if int(mode) == RelativeMode {
+				position = relativeBase + ints[_index]
+			} else {
+				log.Fatal("Invalid mode for getPosition:", mode)
+				return -1
+			}
+			if int(position) >= len(ints) {
+				// Find a better way to increase the slices
+				//log.Println("Will expand from", len(ints), "to", pos+1)
+				for k := len(ints); k <= (int(position) + 1); k++ {
+					ints = append(ints, 0)
+				}
+			}
+			return position
+		}
+
+		optcode := int(input % 100)
 
 		if optcode == 99 {
 			halt <- true
 			break
 		}
 
-		param1 := getParameter(ints, int64(index+1), mode1)
+		param1 := getParameter(1)
 
-		if optcode == 1 || optcode == 2 {
-			param2 := getParameter(ints, int64(index+2), mode2)
-			pos := getPosition(ints, int64(index+3), mode3)
-
-			expandIfNeeded(pos)
-			if optcode == 1 {
-				(ints)[pos] = param1 + param2
-			} else if optcode == 2 {
-				(ints)[pos] = param1 * param2
-			}
+		switch optcode {
+		case 1:
+			// Add
+			pos := getPosition(3)
+			ints[pos] = param1 + getParameter(2)
 			index += 4
-		} else if optcode == 3 || optcode == 4 {
-			/*
-			 * Opcode 3 takes a single integer as input and saves it to the address given by its only parameter. For example, the instruction 3,50 would take an input value and store it at address 50.
-			 * Opcode 4 outputs the value of its only parameter. For example, the instruction 4,50 would output the value at address 50.
-			 */
-			if optcode == 3 {
-				// Parameters that an instruction writes to will never be in immediate mode.
-				read := <-inChannel
-
-				(ints)[getPosition(ints, int64(index+1), mode1)] = read
-			} else if optcode == 4 {
-				output <- param1
-			}
+		case 2:
+			// Multiplication
+			pos := getPosition(3)
+			ints[pos] = param1 * getParameter(2)
+			index += 4
+		case 3:
+			// Opcode 3 takes a single integer as input and saves it to the address given by its only parameter.
+			// For example, the instruction 3,50 would take an input value and store it at address 50.
+			pos := getPosition(1)
+			(ints)[pos] = <-inChannel
 			index += 2
-		} else if optcode == 5 || optcode == 6 {
-			/*
-			 * Opcode 5 is jump-if-true: if the first parameter is non-zero, it sets the instruction pointer to the value from the second parameter. Otherwise, it does nothing.
-			 * Opcode 6 is jump-if-false: if the first parameter is zero, it sets the instruction pointer to the value from the second parameter. Otherwise, it does nothing.
-			 */
-			param2 := getParameter(ints, int64(index+2), mode2)
-
-			if (optcode == 5 && param1 != 0) ||
-				(optcode == 6 && param1 == 0) {
+		case 4:
+			// Opcode 4 outputs the value of its only parameter.
+			// For example, the instruction 4,50 would output the value at address 50.
+			output <- param1
+			index += 2
+		case 5:
+			// Opcode 5 is jump-if-true: if the first parameter is non-zero, it sets the instruction pointer to the value from the second parameter.
+			// Otherwise, it does nothing.
+			param2 := getParameter(2)
+			if param1 != 0 {
 				index = int(param2)
 			} else {
 				index += 3
 			}
-		} else if optcode == 7 || optcode == 8 {
-			/*
-			 * Opcode 7 is less than: if the first parameter is less than the second parameter, it stores 1 in the position given by the third parameter. Otherwise, it stores 0.
-			 * Opcode 8 is equals: if the first parameter is equal to the second parameter, it stores 1 in the position given by the third parameter. Otherwise, it stores 0.
-			 */
-			param2 := getParameter(ints, int64(index+2), mode2)
-			pos := getPosition(ints, int64(index+3), mode3)
-
-			expandIfNeeded(pos)
-
-			if (optcode == 7 && param1 < param2) ||
-				(optcode == 8 && param1 == param2) {
-				(ints)[pos] = 1
+		case 6:
+			// Opcode 4 outputs the value of its only parameter. For example, the instruction 4,50 would output the value at address 50.
+			param2 := getParameter(2)
+			if param1 == 0 {
+				index = int(param2)
 			} else {
-				(ints)[pos] = 0
+				index += 3
 			}
+		case 7:
+			// Opcode 7 is less than: if the first parameter is less than the second parameter,
+			// it stores 1 in the position given by the third parameter. Otherwise, it stores 0.
 
+			param2 := getParameter(2)
+			pos := getPosition(3)
+
+			if param1 < param2 {
+				ints[pos] = 1
+			} else {
+				ints[pos] = 0
+			}
 			index += 4
-		} else if optcode == 9 {
+		case 8:
+			// Opcode 8 is equals: if the first parameter is equal to the second parameter,
+			// it stores 1 in the position given by the third parameter. Otherwise, it stores 0.
+
+			param2 := getParameter(2)
+			pos := getPosition(3)
+
+			if param1 == param2 {
+				ints[pos] = 1
+			} else {
+				ints[pos] = 0
+			}
+			index += 4
+		case 9:
 			// Opcode 9 adjusts the relative base by the value of its only parameter.
 			// The relative base increases (or decreases, if the value is negative) by the value of the parameter.
 			relativeBase += param1
 			index += 2
-		} else {
-			log.Fatalln("Invalid opcode: ", optcode)
+		default:
+			log.Fatal("Invalid optcode:", optcode)
 		}
 	}
 }
